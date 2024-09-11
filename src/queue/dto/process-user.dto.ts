@@ -1,30 +1,38 @@
+import { IsString, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsEmail, IsDateString, IsNotEmpty } from 'class-validator';
 
-// DTO for processing user messages from the queue
 export class ProcessUserDto {
-  @ApiProperty()
-  @IsNotEmpty()
+  @ApiProperty({ description: 'ID of the user', example: '1234' })
   @IsString()
-  id: string;
-  @ApiProperty()
-  @IsNotEmpty()
+  readonly id: string;
+
+  @ApiProperty({ description: 'First name of the user' })
   @IsString()
-  firstName: string;
+  readonly firstName: string;
 
-  @ApiProperty()
-  @IsNotEmpty()
+  @ApiProperty({ description: 'Last name of the user' })
   @IsString()
-  lastName: string;
+  readonly lastName: string;
 
-  @ApiProperty()
-  @IsNotEmpty()
-  @IsEmail()
-  email: string;
+  @ApiProperty({
+    description: 'Email of the user',
+    example: 'user@example.com',
+  })
+  @IsString()
+  readonly email: string;
 
-  @ApiProperty()
-  @IsNotEmpty()
+  @ApiProperty({
+    description: 'Date of birth of the user',
+    example: '2000-01-01',
+  })
   @IsDateString()
-  dob: string;
-  status: never;
+  readonly dob: string;
+
+  @ApiProperty({
+    description: 'Status of the user',
+    example: 'created',
+    enum: ['created', 'updated', 'blocked'],
+  })
+  @IsString()
+  readonly status: string;
 }
