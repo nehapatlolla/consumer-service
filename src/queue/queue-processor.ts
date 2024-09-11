@@ -4,16 +4,20 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand,
 } from '@aws-sdk/client-sqs';
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import {
+  DynamoDBClient,
+  PutItemCommand,
+  UpdateItemCommand,
+} from '@aws-sdk/client-dynamodb';
 
 @Injectable()
 export class QueueProcessorService implements OnModuleInit {
   private readonly sqsClient: SQSClient;
   private readonly dynamoDBClient: DynamoDBClient;
   private readonly queueUrl: string;
-  private readonly tableName = 'Users';
+  private readonly tableName: string;
   private readonly logger = new Logger(QueueProcessorService.name);
-  private readonly pollingInterval = 100000; // 30 seconds
+  private readonly pollingInterval = 10000; // 30 seconds
 
   constructor() {
     this.sqsClient = new SQSClient({
@@ -25,6 +29,7 @@ export class QueueProcessorService implements OnModuleInit {
     });
 
     this.queueUrl = process.env.SQS_QUEUE_URL;
+    this.tableName = process.env.TABLE_NAME;
   }
 
   async onModuleInit() {
@@ -97,6 +102,35 @@ export class QueueProcessorService implements OnModuleInit {
         );
 
         this.logger.log('User created in DynamoDB');
+      } else if (operation === 'update') {
+        const { id, ...updateAttributes } = user;
+        const updateExpression = `SET ${Object.keys(updateAttributes)
+          .map((key) => `#${key} = :${key}`)
+          .join(', ')}`;
+        const expressionAttributeNames = Object.keys(updateAttributes).reduce(
+          (acc, key) => {
+            acc[`#${key}`] = key;
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
+        const expressionAttributeValues = Object.keys(updateAttributes).reduce(
+          (acc, key) => {
+            acc[`:${key}`] = { S: updateAttributes[key] };
+            return acc;
+          },
+          {} as Record<string, any>,
+        );
+        await this.dynamoDBClient.send(
+          new UpdateItemCommand({
+            TableName: this.tableName,
+            Key: { id: { S: id } },
+            UpdateExpression: updateExpression,
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+          }),
+        );
+        this.logger.log('User updated in DynamoDB');
       } else {
         this.logger.warn(`Unknown operation: ${operation}`);
       }
