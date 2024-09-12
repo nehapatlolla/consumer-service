@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import {
@@ -11,6 +12,8 @@ import {
 } from '@aws-sdk/client-sqs';
 import {
   DynamoDBClient,
+  GetItemCommand,
+  GetItemCommandInput,
   PutItemCommand,
   QueryCommand,
   UpdateItemCommand,
@@ -177,6 +180,33 @@ export class QueueProcessorService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Error checking user status:', error);
       throw new BadRequestException('Failed to check user status');
+    }
+  }
+
+  async getgetUserDetailsById(userId: string) {
+    try {
+      const commandInput: GetItemCommandInput = {
+        TableName: this.tableName,
+        Key: { id: { S: userId } },
+      };
+      const command = new GetItemCommand(commandInput);
+      const response = await this.dynamoDBClient.send(command);
+
+      if (!response.Item) {
+        throw new NotFoundException(`User with the ${userId} is not found`);
+      }
+      const item = response.Item;
+      const user = {
+        id: item.id?.S,
+        firstName: item.firstName?.S,
+        lastName: item.lastName?.S,
+        email: item.email?.S,
+        dob: item.dob?.S,
+        status: item.status?.S,
+      };
+      return user;
+    } catch (error) {
+      throw error;
     }
   }
 }

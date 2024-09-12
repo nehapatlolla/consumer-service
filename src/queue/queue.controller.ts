@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Param, Get } from '@nestjs/common';
 import { CheckUserStatusDto } from './dto/check-user-status.dto';
 import { QueueProcessorService } from './queue-processor';
 
@@ -8,7 +8,7 @@ export class ConsumerController {
 
   constructor(private readonly QueueProcessorService: QueueProcessorService) {}
 
-  @Post()
+  @Post('status')
   async checkStatus(@Body() checkUserStatusDto: CheckUserStatusDto) {
     try {
       const result =
@@ -18,5 +18,11 @@ export class ConsumerController {
       this.logger.error('Error in checkStatus endpoint:', error);
       throw error;
     }
+  }
+
+  @Get('details/:id')
+  async getUserdetailsById(@Param('id') id: string) {
+    const result = await this.QueueProcessorService.getgetUserDetailsById(id);
+    return result;
   }
 }
