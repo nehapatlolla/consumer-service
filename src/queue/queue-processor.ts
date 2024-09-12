@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   SQSClient,
   ReceiveMessageCommand,
@@ -7,6 +12,7 @@ import {
 import {
   DynamoDBClient,
   PutItemCommand,
+  QueryCommand,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
 
@@ -136,6 +142,41 @@ export class QueueProcessorService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error('Error handling SQS message:', error);
+    }
+  }
+  async checkUserStatus(checkUserStatusDto: { email: string; dob: string }) {
+    const { email, dob } = checkUserStatusDto;
+
+    if (!email || !dob) {
+      throw new BadRequestException(
+        'Both email and date of birth must be provided.',
+      );
+    }
+
+    try {
+      const commandInput = {
+        TableName: this.tableName,
+        IndexName: 'email-dob-index',
+        KeyConditionExpression: 'email = :email AND dob = :dob',
+        ExpressionAttributeValues: {
+          ':email': { S: email },
+          ':dob': { S: dob },
+        },
+      };
+      const command = new QueryCommand(commandInput);
+      const response = await this.dynamoDBClient.send(command);
+
+      if (response.Items && response.Items.length > 0) {
+        const user = response.Items[0];
+        const id = user.id.S;
+        const status = user.status.S;
+        return { id, status };
+      } else {
+        throw new BadRequestException('User not found');
+      }
+    } catch (error) {
+      this.logger.error('Error checking user status:', error);
+      throw new BadRequestException('Failed to check user status');
     }
   }
 }
