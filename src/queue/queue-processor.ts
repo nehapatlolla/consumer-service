@@ -16,6 +16,7 @@ import {
   GetItemCommandInput,
   PutItemCommand,
   QueryCommand,
+  QueryCommandInput,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
 
@@ -27,6 +28,7 @@ export class QueueProcessorService implements OnModuleInit {
   private readonly tableName: string;
   private readonly logger = new Logger(QueueProcessorService.name);
   private readonly pollingInterval = 10000; // 30 seconds
+  IndexName: string;
 
   constructor() {
     this.sqsClient = new SQSClient({
@@ -39,6 +41,7 @@ export class QueueProcessorService implements OnModuleInit {
 
     this.queueUrl = process.env.SQS_QUEUE_URL;
     this.tableName = process.env.TABLE_NAME;
+    this.IndexName = process.env.INDEX_NAME;
   }
 
   async onModuleInit() {
@@ -94,7 +97,6 @@ export class QueueProcessorService implements OnModuleInit {
       const user = body.user;
       const operation = body.operation;
 
-      // Example: Handle 'create' operation
       if (operation === 'create') {
         await this.dynamoDBClient.send(
           new PutItemCommand({
@@ -113,40 +115,77 @@ export class QueueProcessorService implements OnModuleInit {
         this.logger.log('User created in DynamoDB');
       } else if (operation === 'update') {
         const { id, ...updateAttributes } = user;
-        const updateExpression = `SET ${Object.keys(updateAttributes)
-          .map((key) => `#${key} = :${key}`)
-          .join(', ')}`;
-        const expressionAttributeNames = Object.keys(updateAttributes).reduce(
-          (acc, key) => {
-            acc[`#${key}`] = key;
-            return acc;
+        const userStatus = await this.getgetUserDetailsById(id);
+        if (userStatus.status === 'blocked') {
+          this.logger.warn('Update operation aborted: User is blocked');
+          return;
+        }
+        if (!id) {
+          throw new BadRequestException('ID must be provided.');
+        }
+
+        // Check if user exists
+        const queryCommandInput: QueryCommandInput = {
+          TableName: this.tableName,
+          KeyConditionExpression: 'id = :id',
+          ExpressionAttributeValues: {
+            ':id': { S: id },
           },
-          {} as Record<string, string>,
-        );
-        const expressionAttributeValues = Object.keys(updateAttributes).reduce(
-          (acc, key) => {
-            acc[`:${key}`] = { S: updateAttributes[key] };
-            return acc;
-          },
-          {} as Record<string, any>,
-        );
+        };
+
+        const queryCommand = new QueryCommand(queryCommandInput);
+        const queryResponse = await this.dynamoDBClient.send(queryCommand);
+
+        if (queryResponse.Items && queryResponse.Items.length > 0) {
+          const updateExpression = `SET ${Object.keys(updateAttributes)
+            .map((key) => `#${key} = :${key}`)
+            .join(', ')}`;
+          const expressionAttributeNames = Object.keys(updateAttributes).reduce(
+            (acc, key) => {
+              acc[`#${key}`] = key;
+              return acc;
+            },
+            {} as Record<string, string>,
+          );
+          const expressionAttributeValues = Object.keys(
+            updateAttributes,
+          ).reduce(
+            (acc, key) => {
+              acc[`:${key}`] = { S: updateAttributes[key] };
+              return acc;
+            },
+            {} as Record<string, any>,
+          );
+          await this.dynamoDBClient.send(
+            new UpdateItemCommand({
+              TableName: this.tableName,
+              Key: { id: { S: id } },
+              UpdateExpression: updateExpression,
+              ExpressionAttributeNames: expressionAttributeNames,
+              ExpressionAttributeValues: expressionAttributeValues,
+            }),
+          );
+          this.logger.log('User updated in DynamoDB');
+        }
+      } else if (operation === 'block') {
         await this.dynamoDBClient.send(
           new UpdateItemCommand({
             TableName: this.tableName,
-            Key: { id: { S: id } },
-            UpdateExpression: updateExpression,
-            ExpressionAttributeNames: expressionAttributeNames,
-            ExpressionAttributeValues: expressionAttributeValues,
+            Key: { id: { S: user.id } },
+            UpdateExpression: 'SET #status = :status',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':status': { S: 'blocked' } },
           }),
         );
-        this.logger.log('User updated in DynamoDB');
+        this.logger.log('User blocked in DynamoDB');
       } else {
-        this.logger.warn(`Unknown operation: ${operation}`);
+        this.logger.warn(`User with ${user.id} does not exist`);
       }
     } catch (error) {
       this.logger.error('Error handling SQS message:', error);
     }
   }
+
   async checkUserStatus(checkUserStatusDto: { email: string; dob: string }) {
     const { email, dob } = checkUserStatusDto;
 
@@ -159,7 +198,7 @@ export class QueueProcessorService implements OnModuleInit {
     try {
       const commandInput = {
         TableName: this.tableName,
-        IndexName: 'email-dob-index',
+        IndexName: this.IndexName,
         KeyConditionExpression: 'email = :email AND dob = :dob',
         ExpressionAttributeValues: {
           ':email': { S: email },
@@ -187,7 +226,7 @@ export class QueueProcessorService implements OnModuleInit {
     try {
       const commandInput: GetItemCommandInput = {
         TableName: this.tableName,
-        Key: { id: { S: userId } },
+        Key: { email: { S: userId } },
       };
       const command = new GetItemCommand(commandInput);
       const response = await this.dynamoDBClient.send(command);
@@ -208,5 +247,18 @@ export class QueueProcessorService implements OnModuleInit {
     } catch (error) {
       throw error;
     }
+  }
+
+  async blockUser(id: string) {
+    await this.dynamoDBClient.send(
+      new UpdateItemCommand({
+        TableName: this.tableName,
+        Key: { id: { S: id } },
+        UpdateExpression: 'SET #status = :status',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: { ':status': { S: 'blocked' } },
+      }),
+    );
+    this.logger.log('User blocked in DynamoDB');
   }
 }

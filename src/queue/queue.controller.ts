@@ -25,4 +25,15 @@ export class ConsumerController {
     const result = await this.QueueProcessorService.getgetUserDetailsById(id);
     return result;
   }
+
+  @Post('block/:id')
+  async blockUser(@Param('id') id: string) {
+    try {
+      await this.QueueProcessorService.blockUser(id);
+      return { message: 'User successfully blocked' };
+    } catch (error) {
+      this.logger.error('Error in blockUser endpoint:', error);
+      throw error;
+    }
+  }
 }
