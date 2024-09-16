@@ -30,6 +30,7 @@ export class QueueProcessorService implements OnModuleInit {
   private readonly logger = new Logger(QueueProcessorService.name);
   private readonly pollingInterval = 10000; // 30 seconds
   IndexName: string;
+  producerServiceUrl: string;
 
   constructor() {
     this.sqsClient = new SQSClient({
@@ -43,6 +44,7 @@ export class QueueProcessorService implements OnModuleInit {
     this.queueUrl = process.env.SQS_QUEUE_URL;
     this.tableName = process.env.TABLE_NAME;
     this.IndexName = process.env.INDEX_NAME;
+    this.producerServiceUrl = process.env.PRODUCER_SERVICE_URL;
   }
 
   async onModuleInit() {
@@ -108,6 +110,7 @@ export class QueueProcessorService implements OnModuleInit {
               email: { S: user.email },
               dob: { S: user.dob },
               status: { S: user.status || 'created' },
+              createdAt: { S: user.createdAt },
             },
           }),
         );
@@ -181,6 +184,15 @@ export class QueueProcessorService implements OnModuleInit {
       } else {
         this.logger.warn(`User with ${user.id} does not exist`);
       }
+
+      await axios.post(`${this.producerServiceUrl}/updates/result`, {
+        status: 'success',
+        message: 'User updated successfully',
+      });
+
+      this.logger.log(
+        `Update result sent to producer: ${this.producerServiceUrl}/updates/result`,
+      );
     } catch (error) {
       this.logger.error('Error handling SQS message:', error);
     }
