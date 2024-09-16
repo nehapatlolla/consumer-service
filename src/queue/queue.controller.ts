@@ -22,7 +22,7 @@ export class ConsumerController {
 
   @Get('details/:id')
   async getUserdetailsById(@Param('id') id: string) {
-    const result = await this.QueueProcessorService.getgetUserDetailsById(id);
+    const result = await this.QueueProcessorService.getUserDetailsById(id);
     return result;
   }
 

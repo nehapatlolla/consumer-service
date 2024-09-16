@@ -19,6 +19,7 @@ import {
   QueryCommandInput,
   UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb';
+import axios from 'axios';
 
 @Injectable()
 export class QueueProcessorService implements OnModuleInit {
@@ -70,7 +71,6 @@ export class QueueProcessorService implements OnModuleInit {
             }),
           );
         }
-
         // Continue polling as there are messages
         this.pollQueue();
       } else {
@@ -113,10 +113,19 @@ export class QueueProcessorService implements OnModuleInit {
         );
 
         this.logger.log('User created in DynamoDB');
+        await axios.post(
+          `${process.env.PRODUCER_SERVICE_URL}/users/create-User`,
+          {
+            id: body.user.id,
+            email: body.user.email,
+          },
+        );
+
+        this.logger.log('User created in DynamoDB and producer notified');
       } else if (operation === 'update') {
         const { id, ...updateAttributes } = user;
 
-        const userStatus = await this.getgetUserDetailsById(id);
+        const userStatus = await this.getUserDetailsById(id);
         if (userStatus.status === 'blocked') {
           this.logger.warn('Update operation aborted: User is blocked');
           return;
@@ -174,8 +183,6 @@ export class QueueProcessorService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error('Error handling SQS message:', error);
-
-      // this.logger.warn('User is blocked, cannot update ');
     }
   }
 
@@ -215,11 +222,11 @@ export class QueueProcessorService implements OnModuleInit {
     }
   }
 
-  async getgetUserDetailsById(userId: string) {
+  async getUserDetailsById(userId: string) {
     try {
       const commandInput: GetItemCommandInput = {
         TableName: this.tableName,
-        Key: { email: { S: userId } },
+        Key: { id: { S: userId } },
       };
       const command = new GetItemCommand(commandInput);
       const response = await this.dynamoDBClient.send(command);
