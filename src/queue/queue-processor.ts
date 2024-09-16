@@ -115,11 +115,13 @@ export class QueueProcessorService implements OnModuleInit {
         this.logger.log('User created in DynamoDB');
       } else if (operation === 'update') {
         const { id, ...updateAttributes } = user;
+
         const userStatus = await this.getgetUserDetailsById(id);
         if (userStatus.status === 'blocked') {
           this.logger.warn('Update operation aborted: User is blocked');
           return;
         }
+
         if (!id) {
           throw new BadRequestException('ID must be provided.');
         }
@@ -167,22 +169,13 @@ export class QueueProcessorService implements OnModuleInit {
           );
           this.logger.log('User updated in DynamoDB');
         }
-      } else if (operation === 'block') {
-        await this.dynamoDBClient.send(
-          new UpdateItemCommand({
-            TableName: this.tableName,
-            Key: { id: { S: user.id } },
-            UpdateExpression: 'SET #status = :status',
-            ExpressionAttributeNames: { '#status': 'status' },
-            ExpressionAttributeValues: { ':status': { S: 'blocked' } },
-          }),
-        );
-        this.logger.log('User blocked in DynamoDB');
       } else {
         this.logger.warn(`User with ${user.id} does not exist`);
       }
     } catch (error) {
       this.logger.error('Error handling SQS message:', error);
+
+      // this.logger.warn('User is blocked, cannot update ');
     }
   }
 
