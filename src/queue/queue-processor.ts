@@ -28,7 +28,7 @@ export class QueueProcessorService implements OnModuleInit {
   private readonly queueUrl: string;
   private readonly tableName: string;
   private readonly logger = new Logger(QueueProcessorService.name);
-  private readonly pollingInterval = 10000; // 30 seconds
+  private readonly pollingInterval = 10000;
   IndexName: string;
   producerServiceUrl: string;
 
@@ -65,7 +65,7 @@ export class QueueProcessorService implements OnModuleInit {
         for (const message of response.Messages) {
           await this.handleUserEvent(message);
 
-          // Delete message after processing
+          // Deleting the  message after processing
           await this.sqsClient.send(
             new DeleteMessageCommand({
               QueueUrl: this.queueUrl,
@@ -74,15 +74,16 @@ export class QueueProcessorService implements OnModuleInit {
           );
         }
         // Continue polling as there are messages
+        // settimeout-usage
         this.pollQueue();
       } else {
-        // No messages, wait and poll again
+        // No messages wait and poll again
         this.logger.log('Queue is empty, waiting before next poll...');
         setTimeout(() => this.pollQueue(), this.pollingInterval);
       }
     } catch (error) {
       this.logger.error('Error polling SQS queue:', error);
-      // Optionally add a delay before retrying in case of error
+      //  adding the delay before retrying in case of error
       setTimeout(() => this.pollQueue(), this.pollingInterval);
     }
   }
@@ -91,7 +92,6 @@ export class QueueProcessorService implements OnModuleInit {
     try {
       const body = JSON.parse(message.Body!);
 
-      // Check message body structure
       if (!body.user || !body.operation) {
         throw new Error('Invalid message structure');
       }
