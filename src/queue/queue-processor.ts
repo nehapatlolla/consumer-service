@@ -226,11 +226,11 @@ export class QueueProcessorService implements OnModuleInit {
         const status = user.status.S;
         return { id, status };
       } else {
-        throw new BadRequestException('User not found');
+        throw new NotFoundException('User not found');
       }
     } catch (error) {
       this.logger.error('Error checking user status:', error);
-      throw new BadRequestException('Failed to check user status');
+      throw new NotFoundException('Failed to check user status');
     }
   }
 
@@ -244,8 +244,9 @@ export class QueueProcessorService implements OnModuleInit {
       const response = await this.dynamoDBClient.send(command);
 
       if (!response.Item) {
-        throw new NotFoundException(`User with the ${userId} is not found`);
+        throw new NotFoundException(`User with id ${userId} is not found`);
       }
+
       const item = response.Item;
       const user = {
         id: item.id?.S,
@@ -255,13 +256,23 @@ export class QueueProcessorService implements OnModuleInit {
         dob: item.dob?.S,
         status: item.status?.S,
       };
+
       return user;
     } catch (error) {
       throw error;
     }
   }
 
-  async blockUser(id: string) {
+  async blockUser(id: string): Promise<string> {
+    if (!id) {
+      throw new NotFoundException('User not found');
+    }
+
+    const userDetails = await this.getUserDetailsById(id);
+    if (!userDetails) {
+      throw new NotFoundException('User not found');
+    }
+
     await this.dynamoDBClient.send(
       new UpdateItemCommand({
         TableName: this.tableName,
@@ -271,6 +282,8 @@ export class QueueProcessorService implements OnModuleInit {
         ExpressionAttributeValues: { ':status': { S: 'blocked' } },
       }),
     );
+
     this.logger.log('User blocked in DynamoDB');
+    return 'User blocked';
   }
 }
